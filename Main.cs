@@ -5,6 +5,23 @@ using System.Json;
 using System.Linq;
 using System.Net;
 
+static class UnixTime
+{
+  private static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+
+  public static DateTime Parse(string secondsString)
+  {
+    var seconds = Double.Parse(secondsString);
+    return epoch.AddSeconds(seconds);
+  }
+
+  public static string Format(DateTime dt)
+  {
+    var seconds = (dt - epoch).TotalSeconds;
+    return ((Int64)seconds).ToString();
+  }
+}
+
 class Config
 {
   public readonly string apiKey;
@@ -18,8 +35,13 @@ class Config
 
   public Uri GetUri(int limit, int page)
   {
+    return GetUri(limit, page, null, null);
+  }
+
+  public Uri GetUri(int limit, int page, DateTime? begin, DateTime? end)
+  {
     var builder = new UriBuilder("https://", "ws.audioscrobbler.com/2.0");
-    var query = new []
+    var query = new List<String>()
     {
       "method=user.getrecenttracks",
       "user=" + this.username,
@@ -29,6 +51,8 @@ class Config
       "limit=" + limit.ToString(),
       "page=" + page.ToString(),
     };
+    if (begin != null) query.Add("from=" + UnixTime.Format(begin.Value));
+    if (end != null) query.Add("to=" + UnixTime.Format(end.Value));
     builder.Query = String.Join("&", query);
     return builder.Uri;
   }
@@ -70,7 +94,7 @@ class Page
   }
 }
 
-static class FmCount
+static class Fmcount
 {
   static string LocalDir
   {
@@ -115,7 +139,7 @@ static class FmCount
       var alid = track["album"]["mbid"];
       var tn = track["name"];
       var tid = track["mbid"];
-      var time = FromUnixTime(track["date"]["uts"]);
+      var time = UnixTime.Parse(track["date"]["uts"]);
       var loved = track["loved"] == "1";
       scrobbles.Add(new Scrobble(arn, arid, aln, alid, tn, tid, time, loved));
     }
@@ -123,19 +147,38 @@ static class FmCount
     return new Page(totalPages, scrobbles.ToArray());
   }
 
-  static DateTime FromUnixTime(string secondsString)
+  public static IEnumerable<DateTime> EnumerateMonths(DateTime start, DateTime end)
   {
-    var seconds = Double.Parse(secondsString);
-    var epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
-    return epoch.AddSeconds(seconds);
+    var current = new DateTime(start.Year, start.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    while (current < end)
+    {
+      yield return current;
+
+      // Note: AddMonths does not simply add 3600 * 24 * 30 seconds, it bumps
+      // the month counter.
+      current = current.AddMonths(1);
+    }
   }
 
   static int Main(string[] argv)
   {
     Console.WriteLine(LocalDir);
     var config = ReadConfig();
-    var firstPage = Probe(config);
-    Console.WriteLine(firstPage.ToString());
+
+    var now = DateTime.UtcNow;
+
+    var wc = new WebClient();
+    var firstPage = Parse(wc.DownloadString(config.GetUri(10, 1)));
+    var lastPage = Parse(wc.DownloadString(config.GetUri(10, firstPage.totalPages)));
+
+    var firstScrobbleTime = lastPage.scrobbles.Last().time;
+    Console.WriteLine("First scrobble time: {0:s}", firstScrobbleTime);
+
+    foreach (var month in EnumerateMonths(firstScrobbleTime, now))
+    {
+      Console.WriteLine("Would obtain month: {0:s}", month);
+    }
+
     return 0;
   }
 }
