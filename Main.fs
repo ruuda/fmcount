@@ -6,19 +6,19 @@ type Config = {
 }
 
 type Scrobble = {
-  ArtistName: string;
-  ArtistMbid: string;
-  AlbumName: string;
-  AlbumMbid: string;
-  TrackName: string;
-  TrackMbid: string;
-  Time: DateTime;
-  Loved: bool;
+  ArtistName: string
+  ArtistMbid: string
+  AlbumName: string
+  AlbumMbid: string
+  TrackName: string
+  TrackMbid: string
+  Time: DateTime
+  Loved: bool
 }
 
 type Page = {
-  TotalPages: int;
-  Scrobbles: Scrobble[];
+  TotalPages: int
+  Scrobbles: Scrobble[]
 }
 
 let getUri (config: Config) (limit: int) (page: int) : Uri =
